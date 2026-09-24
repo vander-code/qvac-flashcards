@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flashcards</title>
+<style>
+  :root { --bg: #dfe7f1; --navy: #1d2b4f; --red: #e0574f; --rule: #bcd0f0; --muted: #5d6b86; --card: #fff; --green: #2e9b5f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--navy); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 620px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font: 800 32px/1.1 Georgia, serif; margin: 0; } .sub { color: var(--muted); margin: 2px 0 10px; }
+  #status { font-size: 13px; color: var(--muted); margin: 0 0 12px; } #status.ok { color: var(--green); } #status.err { color: #b3261e; }
+  .panel { background: var(--card); border: 1px solid #c5d1e4; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .panel h2 { font: 700 20px Georgia, serif; margin: 0 0 8px; }
+  input, select { font: inherit; padding: 9px 12px; border: 2px solid #c5d1e4; border-radius: 10px; background: #fff; color: var(--navy); min-width: 0; width: 100%; }
+  input:focus-visible, select:focus-visible, button:focus-visible, .card3d:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+  button { font: inherit; font-weight: 700; padding: 9px 16px; border: 2px solid var(--navy); border-radius: 10px; background: var(--navy); color: #fff; cursor: pointer; }
+  button.ghost { background: #fff; color: var(--navy); } button.red { background: var(--red); border-color: var(--red); } button.green { background: var(--green); border-color: var(--green); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; } .row > input { flex: 1 1 160px; } .row > select { flex: 0 1 190px; }
+  .deck { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid #e1e8f3; } .deck .name { flex: 1 1 160px; font: 700 18px Georgia, serif; } .deck .meta { color: var(--muted); font-size: 14px; }
+  .pair { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid #e1e8f3; align-items: center; } .pair span { flex: 1; overflow-wrap: anywhere; } .pair .arrow { color: var(--muted); flex: 0; }
+  .note { color: var(--muted); font-size: 14px; margin: 6px 0 0; min-height: 21px; } .empty { color: var(--muted); text-align: center; padding: 16px 0; } .hidden { display: none; }
+  /* Study card */
+  .scene { perspective: 1200px; margin: 14px 0; } .card3d { position: relative; height: 260px; transform-style: preserve-3d; transition: transform .5s; cursor: pointer; }
+  .card3d.flipped { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 12px; display: grid; place-items: center; padding: 34px 24px 20px; text-align: center;
+    font: 700 28px/1.45 Georgia, serif; overflow: auto; box-shadow: 0 4px 0 rgba(29,43,79,.18); border-top: 4px solid var(--red);
+    background: repeating-linear-gradient(#fff 0 35px, var(--rule) 35px 36px); background-color: #fff; }
+  .face.back { transform: rotateY(180deg); background-color: #f7fbff; } .face small { position: absolute; top: 10px; left: 14px; font: 700 12px system-ui; color: var(--red); letter-spacing: .08em; text-transform: uppercase; }
+  .count { text-align: center; color: var(--muted); font-weight: 600; } .prog { height: 8px; background: #c5d1e4; border-radius: 99px; overflow: hidden; margin: 6px 0; } .prog div { height: 100%; background: var(--green); width: 0; transition: width .3s; }
+  .grade { display: flex; gap: 10px; justify-content: center; } .grade button { flex: 1; max-width: 220px; }
+  @media (prefers-reduced-motion: reduce) { .card3d, .prog div { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Flashcards</h1>
+  <p class="sub">Question on one side, answer on the other. Flip, check, repeat.</p>
+  <p id="status">Checking the translator...</p>
+
+  <!-- DECKS -->
+  <section id="decksView">
+    <div class="panel">
+      <h2>Your decks</h2><div id="decks"></div>
+      <div class="row"><input id="newDeck" placeholder="New deck name, e.g. Biology chapter 3" maxlength="60" aria-label="New deck name"><button id="addDeck">Create deck</button></div>
+      <div class="row"><button class="ghost" id="sampleBtn">Add a sample deck</button><button class="ghost" id="exportBtn">Download backup</button></div>
+    </div>
+  </section>
+
+  <!-- ONE DECK -->
+  <section id="deckView" class="hidden">
+    <div class="row" style="margin:0 0 10px"><button class="ghost" id="backBtn">&larr; All decks</button><button class="green" id="studyBtn">Study this deck</button></div>
+    <div class="panel">
+      <h2 id="deckName"></h2>
+      <div class="row"><input id="cFront" placeholder="Front (question or word)" maxlength="200" aria-label="Front"></div>
+      <div class="row"><input id="cBack" placeholder="Back (answer or translation)" maxlength="200" aria-label="Back"></div>
+      <div class="row">
+        <select id="pair" aria-label="Translate direction"><option value="en-es">English &rarr; Spanish</option><option value="en-fr">English &rarr; French</option><option value="en-it">English &rarr; Italian</option><option value="es-en">Spanish &rarr; English</option></select>
+        <button class="ghost" id="trBtn">Auto-translate the back</button><button class="red" id="addCard">Add card</button>
+      </div>
+      <p class="note" id="trNote"></p>
+    </div>
+    <div class="panel"><h2>Cards</h2><div id="cards"></div></div>
+  </section>
+
+  <!-- STUDY -->
+  <section id="studyView" class="hidden">
+    <div class="row" style="margin:0 0 6px"><button class="ghost" id="exitBtn">&larr; Stop</button>
+      <label style="margin-left:auto"><input id="flipFirst" type="checkbox" style="width:auto"> Show the back first</label></div>
+    <div class="count" id="count"></div><div class="prog"><div id="bar"></div></div>
+    <div class="scene"><div class="card3d" id="card" tabindex="0" role="button" aria-label="Flip card">
+      <div class="face" id="front"><small id="frontTag">Front</small><span id="frontText"></span></div>
+      <div class="face back" id="back"><small id="backTag">Back</small><span id="backText"></span></div>
+    </div></div>
+    <p class="note" style="text-align:center" id="hint">Click the card (or press Space) to flip it</p>
+    <div class="grade hidden" id="grade"><button class="red" id="again">Again</button><button class="green" id="got">Got it</button></div>
+  </section>
+
+  <!-- DONE -->
+  <section id="doneView" class="hidden panel" style="text-align:center">
+    <h2>Deck complete!</h2><p id="doneMsg"></p>
+    <div class="row" style="justify-content:center"><button id="againDeck">Study again</button><button class="ghost" id="doneBack">Back to decks</button></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let decks = []; try { decks = JSON.parse(localStorage.getItem("decks") || "[]"); } catch {}
+const persist = () => { try { localStorage.setItem("decks", JSON.stringify(decks)); } catch {} };
+let deck = null, queue = [], total = 0, tries = 0, flipped = false;
+const VIEWS = ["decksView", "deckView", "studyView", "doneView"];
+const show = (v) => { VIEWS.forEach((x) => $(x).classList.toggle("hidden", x !== v)); window.scrollTo(0, 0); };
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+// ---------- Decks ----------
+function renderDecks() {
+  const box = $("decks"); box.innerHTML = "";
+  if (!decks.length) box.innerHTML = '<p class="empty">No decks yet. Create one below, or add the sample deck.</p>';
+  decks.forEach((d) => {
+    const r = document.createElement("div"); r.className = "deck";
+    const n = document.createElement("span"); n.className = "name"; n.textContent = d.name;
+    const m = document.createElement("span"); m.className = "meta"; m.textContent = d.cards.length + " card" + (d.cards.length === 1 ? "" : "s");
+    const open = document.createElement("button"); open.className = "ghost"; open.textContent = "Open"; open.onclick = () => openDeck(d);
+    const st = document.createElement("button"); st.className = "green"; st.textContent = "Study"; st.disabled = !d.cards.length; st.onclick = () => study(d);
+    const del = document.createElement("button"); del.className = "ghost"; del.textContent = "Delete"; del.setAttribute("aria-label", "Delete " + d.name);
+    del.onclick = () => { if (confirm("Delete the deck \"" + d.name + "\"?")) { decks = decks.filter((x) => x !== d); persist(); renderDecks(); } };
+    r.append(n, m, open, st, del); box.append(r);
+  });
+}
+$("addDeck").onclick = () => { const name = $("newDeck").value.trim(); if (!name) return $("newDeck").focus(); const d = { id: uid(), name, cards: [] }; decks.push(d); persist(); $("newDeck").value = ""; openDeck(d); };
+$("newDeck").onkeydown = (e) => e.key === "Enter" && $("addDeck").click();
+$("sampleBtn").onclick = () => {
+  const P = [["hello", "hola"], ["thank you", "gracias"], ["please", "por favor"], ["water", "agua"], ["good morning", "buenos d\u00edas"], ["Where is the bathroom?", "\u00bfD\u00f3nde est\u00e1 el ba\u00f1o?"]];
+  decks.push({ id: uid(), name: "Spanish basics", cards: P.map(([front, back]) => ({ id: uid(), front, back })) }); persist(); renderDecks();
+};
+$("exportBtn").onclick = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(decks, null, 2)], { type: "application/json" })); a.download = "my-flashcards.json"; a.click(); };
+
+// ---------- One deck ----------
+function openDeck(d) { deck = d; $("deckName").textContent = d.name; $("trNote").textContent = ""; renderCards(); show("deckView"); $("cFront").focus(); }
+function renderCards() {
+  $("studyBtn").disabled = !deck.cards.length; const box = $("cards"); box.innerHTML = "";
+  if (!deck.cards.length) box.innerHTML = '<p class="empty">No cards yet. Add your first one above.</p>';
+  [...deck.cards].reverse().forEach((c) => {
+    const r = document.createElement("div"); r.className = "pair";
+    const f = document.createElement("span"); f.textContent = c.front; const a = document.createElement("span"); a.className = "arrow"; a.textContent = "\u2192"; const b = document.createElement("span"); b.textContent = c.back;
+    const x = document.createElement("button"); x.className = "ghost"; x.textContent = "\u00d7"; x.setAttribute("aria-label", "Delete card " + c.front);
+    x.onclick = () => { deck.cards = deck.cards.filter((k) => k !== c); persist(); renderCards(); };
+    r.append(f, a, b, x); box.append(r);
+  });
+}
+function addCard() {
+  const front = $("cFront").value.trim(), back = $("cBack").value.trim();
+  if (!front) return $("cFront").focus(); if (!back) return $("cBack").focus();
+  deck.cards.push({ id: uid(), front, back }); persist(); $("cFront").value = ""; $("cBack").value = ""; $("trNote").textContent = ""; renderCards(); $("cFront").focus();
+}
+$("addCard").onclick = addCard; $("cBack").onkeydown = (e) => e.key === "Enter" && addCard();
+$("backBtn").onclick = () => { renderDecks(); show("decksView"); };
+$("studyBtn").onclick = () => study(deck);
+
+// ---------- Auto-translate with QVAC (on your machine) ----------
+$("trBtn").onclick = async () => {
+  const text = $("cFront").value.trim(); if (!text) return $("cFront").focus();
+  $("trBtn").disabled = true; $("trNote").textContent = "Translating... (the first time for each language, a small model downloads.)";
+  try {
+    const res = await fetch("/api/translate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, pair: $("pair").value }) });
+    const data = await res.json(); if (!res.ok) throw new Error(data.error);
+    $("cBack").value = data.text; $("trNote").textContent = "Done. Check the translation, then press Add card."; $("cBack").focus();
+  } catch (err) { $("trNote").textContent = "Couldn't translate: " + err.message; }
+  $("trBtn").disabled = false;
+};
+
+// ---------- Study ----------
+function study(d) {
+  deck = d; queue = [...d.cards].sort(() => Math.random() - 0.5); total = queue.length; tries = 0; show("studyView"); draw();
+}
+function draw() {
+  const c = queue[0]; flipped = false; $("card").classList.remove("flipped"); $("grade").classList.add("hidden"); $("hint").classList.remove("hidden");
+  const ff = $("flipFirst").checked; $("frontText").textContent = ff ? c.back : c.front; $("backText").textContent = ff ? c.front : c.back;
+  $("frontTag").textContent = ff ? "Back side" : "Front"; $("backTag").textContent = ff ? "Front side" : "Back";
+  $("count").textContent = (total - queue.length) + " known, " + queue.length + " to go"; $("bar").style.width = ((total - queue.length) / total) * 100 + "%";
+}
+function flip() { flipped = !flipped; $("card").classList.toggle("flipped", flipped); $("grade").classList.toggle("hidden", !flipped); $("hint").classList.toggle("hidden", flipped); }
+function grade(known) {
+  if (!flipped) return; tries++; const c = queue.shift(); if (!known) queue.push(c);
+  if (!queue.length) { $("doneMsg").textContent = "You knew all " + total + " cards. It took " + tries + " tries."; show("doneView"); } else draw();
+}
+$("card").onclick = flip; $("got").onclick = () => grade(true); $("again").onclick = () => grade(false); $("flipFirst").onchange = () => queue.length && draw();
+$("exitBtn").onclick = () => { renderDecks(); show("decksView"); }; $("againDeck").onclick = () => study(deck); $("doneBack").onclick = () => { renderDecks(); show("decksView"); };
+document.addEventListener("keydown", (e) => {
+  if ($("studyView").classList.contains("hidden") || e.target.tagName === "INPUT") return;
+  if (e.key === " " || e.key === "Enter") { e.preventDefault(); flip(); } else if (e.key === "ArrowRight") grade(true); else if (e.key === "ArrowLeft") grade(false);
+});
+
+// ---------- Server status ----------
+async function checkStatus() {
+  try { await (await fetch("/api/status")).json(); setStatus("Translator connected. Language models download the first time you use each one.", "ok"); $("trBtn").disabled = false; }
+  catch { setStatus("Can't reach the server. Is it running? (Cards still work, but auto-translate won't.)", "err"); $("trBtn").disabled = true; setTimeout(checkStatus, 3000); }
+}
+function setStatus(t, c = "") { $("status").textContent = t; $("status").className = c; }
+
+renderDecks(); checkStatus();
+</script>
+</body>
+</html>
